@@ -23,7 +23,7 @@ Compatible (and tested) with fio 3.5.
 Also can be downloaded from github repo:
 
 ```bash
-# Good to put fio to different directory name as fio is also name of the binary
+# Recommended to put fio inside different directory name as fio is also name of the binary
 mkdir git_fio
 cd git_fio
 
@@ -77,7 +77,7 @@ Every FIO performance (test loop iteration) collect output of fio inside file
 called:
 
 ```
-<workload_name>_<nr_jobs>_jobs_<blk_size>_<file_system>_<kernel_version>
+<test_name>_<workload_name>_<nr_jobs>_jb_<blk_size>_bl_<rw_ratio>_rw_<file_system>_<kernel_version>
 ```
 
 During performance test also stats from different tools are collected inside
@@ -87,5 +87,7 @@ directory
 stats_<workload_name>_<nr_jobs>_jobs_<blk_size>_<file_system>_<kernel_version>
 ```
 
-## Baclog:
+## Backlog:
  - btrfs support
+ - integration with gnuplot
+ - support for perf

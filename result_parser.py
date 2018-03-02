@@ -1,6 +1,11 @@
 import os
 import sys
+import configparser
+import argparse
 from statistics import median, mean
+from file_parser import file_parser
+from configuration import extract_man_field
+from configuration import get_fslist
 
 
 def request_user_input(root, list):
@@ -35,38 +40,58 @@ def get_result_root(fs, fs_dir=None, all=0):
     return res
 
 
-'''
-# All parsing is returning triple of:
-#  - test description (tag)
-#  - value in csv row format
-#  - description of the row
-'''
-# Return csv row description
-def get_csv_description():
-    return 'workload,READ,WRITE,ios,cs-md,cs-av,us-md,us-av,sy-md,sy-av,id-md,id-av,wa-md,wa-av'
+function_mappings = {
+    'avg': mean,
+    'med': median
+}
+
+
+def select_function(string):
+    return function_mappings[string]
 
 
 def prefix(x):
     return {
-        'K': 1000,
-        'M': 1000000,
-        'G': 1000000000
+        'K': 1024,
+        'k': 1024,
+        'Ki': 1000,
+        'ki': 1000,
+        'M': 1048576,
+        'm': 1048576,
+        'Mi': 1000000,
+        'mi': 1000000,
+        'G': 1073741824,
+        'g': 1073741824,
+        'Gi': 1000000000,
+        'gi': 1000000000
     }.get(x)
+
+
+def get_prexif_pos(string):
+    for i in range(0, len(string)):
+        if string[i] == '.':
+            continue
+        if not string[i].isdigit():
+            return i
+    return -1
 
 
 # Parse vmstat fio file field to integer, remove GB, MB, KB, B sufixes
 # In case of error can forward control to user if intel == 1
-def vmstat_parse_field(field, intel=0):
+def parse_field(field, intel=0):
     try:
-        eq_idx = field.index('=')+1
-        ut_idx = field.find('B/s,')
+        eq_idx = field.find('=') + 1
+        if eq_idx == -1:
+            eq_idx = 0
+        ut_idx = field.find('B/s')
         if ut_idx is -1:
-            ut_idx = field.find('B,')
+            ut_idx = field.find('B')
         txt = field[eq_idx:ut_idx]
         if txt[-1].isdigit():
             return txt
         else:
-            return prefix(txt[-1])*float(txt[:-1])
+            idx = get_prexif_pos(txt)
+            return prefix(txt[idx:]) * float(txt[:idx])
 
     except Exception as ex:
         print("Sorry, Exception raised during parsing the field: {}\n".format(field))
@@ -74,149 +99,124 @@ def vmstat_parse_field(field, intel=0):
         return input("You can still recover by providing manually value\n>>...")
 
 
-# We need to extract from status files:
-# READ-io, READ-aggrb
-# WRITE-io, WRITE-aggrb
-# Disk stats ios
-def get_triple(f):
-    # get 3 lines with results starting with READ, WRITE, and third after keyword
-    # row title will looks as follow: 'READ, WRITE, ios'
-    lines = []
-    rw = {'READ', 'WRITE'}
-    disk_stats = 'Disk stats (read/write):'
-    ll = open(f, 'r', errors='replace').readlines()
-    description = 'READ, WRITE, ios'
-
-    for i in range(len(ll)):
-        for k in rw:
-            if k in ll[i]:
-                lines.append(ll[i])
-                break
-        if disk_stats in ll[i]:
-            lines.append(ll[i+1])
-
-    if len(lines) != 3:
-        sys.exit('Incorrect format of performance results.\nConsider checking perf logs.\nCannot Process...')
-
-    csv = []
-    # Process READ section
-    tmp = lines[0].split()
-    csv.append(vmstat_parse_field(tmp[1]))
-    csv.append(vmstat_parse_field(tmp[2]))
-
-    # Process WRITE section
-    tmp = lines[1].split()
-    csv.append(vmstat_parse_field(tmp[1]))
-    csv.append(vmstat_parse_field(tmp[2]))
-
-    # Process disk ios
-    tmp = lines[2].split()
-    csv.append(vmstat_parse_field(tmp[1]))
-
-    return dict(title=f[f.rfind('/')+1:], description=description, csv_row=csv)
-
-
-def parse_perf_files(stats_root):
+def parse_monitor_files(stats_root, cfg):
     # Get all perf files from the stats_root
     files = [f for f in os.listdir(stats_root) if os.path.isfile(os.path.join(stats_root, f))]
-
-    rows = []
+    parser = file_parser()
+    res = []
     for f in files:
+        tmp = {}
         # Skip swaps just in case :)
         if '.swp' in f:
             continue
-        rows.append(get_triple(os.path.join(stats_root, f)))
-        rows[-1] = parse_stats_files(stats_root, rows[-1])
+        # Currently we support only FIO output and vmstat output
+        tmp.update({'fio_out': parser.parse(file_parser.FILE_FIO_OUT, os.path.join(stats_root, f))})
+        tmp.update(
+            {'vms_out': parser.parse(file_parser.FILE_VMSTAT, os.path.join(stats_root, 'stats_{}/vmstat'.format(f)))})
+        tmp.update({'test': f})
+        res.append(tmp)
 
-    print(rows)
-    return rows
-
-
-# extract from vmstat file median for:
-# 'cs, us, sy, id, wa' [11, 12, 13, 14, 15]
-# TODO: FIX ME currently we just hardcode position inside vmstat output
-#       But in future it will be good to find position dynamically
-# Additional Note: during performing fio workload for some reason fio stuck for first few
-#                  period of time and just doing write. To fix that we filter all
-def vmstat_file_extract(path):
-    lines = open(path, 'r', errors='replace').readlines()
-    data = []
-    for l in lines:
-        d = l.split()
-        if len(d) > 0 and d[0].isdigit():
-            data.append(d)
-
-    if len(data) < 2:
-        sys.exit('Stats vmstat file empty, cannot continue!')
-
-    # Remove first line as it contain time since vmrun (really bad for avg)
-    del data[0]
-
-    dt = {'cs': [], 'us': [], 'sy': [], 'id': [], 'wa': []}
-    for i in data:
-        dt['cs'].append(int(i[11]))
-        dt['us'].append(int(i[12]))
-        dt['sy'].append(int(i[13]))
-        dt['id'].append(int(i[14]))
-        dt['wa'].append(int(i[15]))
-
-    csm = median(dt['cs'])
-    usm = median(dt['us'])
-    sym = median(dt['sy'])
-    idm = median(dt['id'])
-    wam = median(dt['wa'])
-
-    csa = mean(dt['cs'])
-    usa = mean(dt['us'])
-    sya = mean(dt['sy'])
-    ida = mean(dt['id'])
-    waa = mean(dt['wa'])
-
-    return [csm, csa, usm, usa, sym, sya, idm, ida, wam, waa]
+    print(res)
+    return res
 
 
-# As for now we are interested in vmstat output
-# for every workload correspond vmstat is saved in stat file,
-# Here we combine them together
-def parse_stats_files(stats_root, row):
-    # Get followed data from vmstat (we calculate both median and avg):
-    # cs : context switching counter from CPU
-    # id : cpu idle time
-    # wa : cpu waiting time
-    # sy : percent of time spent inside system
-    # us : percent of time spent inside user space code
-    # row title will looks as follow: 'cs, us, sy, id, wa'
-    title2 = ', cs-md, cs-av, us-md, us-av, sy-md, sy-av, id-md, id-av, wa-md, wa-av'
+def parse_fio_fields(fio, fields):
+    res = {}
+    for key, value in fields.items():
+        res.update({key: parse_field(fio[value], 0)})
 
-    # for row get stats folder and read vmstat
-    path = os.path.join(stats_root, 'stats_'+row['title'])
-    path = os.path.join(path, 'vmstat')
-    data = vmstat_file_extract(path)
-    row['description'] += title2
-    row['csv_row'] += list(map(str, data))
+    return res
 
-    return row
+
+def vms_range(values, length):
+    for i in range(0, len(values)):
+        if '%' in values[i]:
+            values[i] = float(values[i].strip('%')) / 100 * length
+        else:
+            if isBlank(values[i]):
+                if i == 0:
+                    values[i] = 0
+                else:
+                    values[i] = length
+            else:
+                values[i] = int(values[i])
+
+    return slice(values[0], values[1])
+
+
+def isBlank(myString):
+    if myString and myString.strip():
+        return False
+    return True
+
+
+def parse_vms_fields(vms, fields, vmstat_fields):
+    res = {}
+    vmsr = dict(map(lambda x: (int(x[x.find('('):x.find(')') + 1].strip('()')), x[x.find('[') + 1:x.find(']')]),
+                    vmstat_fields.split(';')))
+
+    for key, value in fields.items():
+        row = list(map(lambda x: int(x), vms[value]))
+        form = vmsr[key].split(',')
+        s = vms_range(form[0].strip('()').split(':'), len(row))
+        funct = select_function(form[1])
+        res.update({key: funct(row[s])})
+
+    return res
+
+
+def generate_csv(stats, cfg):
+    csv = []
+    csv_header = extract_man_field(cfg, 'csv_output', 'csv_header')
+    csv.append(csv_header)
+
+    fio_fields = extract_man_field(cfg, 'csv_output', 'fio_output')
+    # Get fio_fields in order:
+    fio_fields = fio_fields.split(';')
+    # TODO: Handle other stats based on configuration
+    # TODO: Handle other cases if not (1_NAME) but (1)NAME:A...
+    fior = list(map(lambda x: x[x.find('('):x.find(')') + 1].strip('()'), fio_fields))
+    fiod = dict(zip(map(lambda x: int(x[:x.find('_')]), fior), map(lambda x: x[x.find('_') + 1:], fior)))
+    vmstat_fields = extract_man_field(cfg, 'csv_output', 'vmstat_fields')
+    vmsr = map(lambda x: (int(x[x.find('('):x.find(')') + 1].strip('()')), x[x.find(')') + 1:x.find('[')]),
+               vmstat_fields.split(';'))
+    vmsd = dict(vmsr)
+    # this require python3.5
+    orderz = {**vmsd, **fiod}
+    maxz = max(orderz)
+
+    for i in stats:
+        row = ''
+        test = i['test']
+        row += '{},'.format(test)
+        fio = parse_fio_fields(i['fio_out'], fiod)
+        vms = parse_vms_fields(i['vms_out'], vmsd, vmstat_fields)
+
+        for j in range(1, maxz + 1):
+            if j in fio:
+                row += '{},'.format(fio[j])
+            elif j in vms:
+                row += '{},'.format(vms[j])
+        csv.append(row)
+
+    return csv
 
 
 def save_to_file(csv, tag, fs):
     file_name = 'parsed_{}_{}.csv'.format(tag, fs)
-    print('Saving result to file')
+    print('Saving result to file {}'.format(file_name))
     out = open(file_name, 'w')
 
-    out.write(get_csv_description())
-    out.write('\n')
-
     for row in csv:
-        out.write(row['title'])
-        out.write(',')
-        out.write(','.join(map(str, row['csv_row'])))
+        out.write(row.strip(','))
         out.write('\n')
     out.close()
 
 
-def parse(stats_root, fs):
-    csv = parse_perf_files(stats_root)
-    save_to_file(csv, stats_root[stats_root.rfind('/')+1:], fs)
+def parse(stats_root, fs, config):
+    stat = parse_monitor_files(stats_root, config)
+    csv = generate_csv(stat, config)
+    save_to_file(csv, stats_root[stats_root.rfind('/') + 1:], fs)
 
 
 def gen_stats_files(root, all, fs):
@@ -224,11 +224,18 @@ def gen_stats_files(root, all, fs):
     for f in fs:
         stats_root = get_result_root(f, root, all)
         for s in stats_root:
-            parse(s, f)
+            parse(s, f, config)
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
+                    dest="config", help="Test configuration.")
+config = configparser.ConfigParser()
+args = parser.parse_args()
+config.read(args.config.name)
 
 if __name__ == "__main__":
-    fs_list = ['xfs', 'ext4', 'zfs']
+    fs_list = get_fslist(config)
     root = None
     all = 0
     # TODO: I am broken please use argpars!

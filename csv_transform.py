@@ -78,7 +78,7 @@ def cast_prefix(x):
 # Format of tag is as follow: <workload>_N_jobs_M<K/M>_blks_J_rrat
 # We return triple: [jobs: N, blksize: M, rw_rat: J]
 def extract_tag(tag):
-    jobs = int(re.search("_(.+?)_jobs", tag).group(1))
+    jobs = int(re.search('_(.+?)_jobs', tag).group(1))
     blksize = re.search("jobs_(.+?)_blks", tag).group(1)
     blksize = cast_prefix(blksize)
     rat = int(re.search("blks_(.+?)_rrat", tag).group(1))
@@ -103,8 +103,6 @@ def match_and_merge(f1, f2):
                 del(f2[idx])
                 break
     return merged
-
-
 
 
 # Should load 2 files with fs extension to compare

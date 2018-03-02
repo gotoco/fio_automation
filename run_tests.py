@@ -8,6 +8,8 @@ import errno
 import argparse
 from time import gmtime, strftime, sleep
 from result_parser import gen_stats_files
+from configuration import extract_man_field
+from configuration import get_fslist
 
 
 def mkdir_p(path):
@@ -89,16 +91,6 @@ def append_flag_to_cmdparams(cmd, config, test, property, flag_name):
 
     return cmd
 
-
-def extract_field(config, section, fname):
-    try:
-        val = config.get(section, fname)
-    except configparser.NoOptionError as ex:
-        print('Error during configuration parsing!\nMandatory field: {} in section {} missing:\n{}'
-              .format(section, fname, ex))
-        return
-
-    return val
 
 # Simple mapping fields from config to fio binary
 # List fields from config should be iterate internally and passed as a parameters
@@ -256,10 +248,10 @@ def run_test(config, fs):
     output = subprocess.check_output(['bash', '-c', dummy])
     print(output.decode('ascii'))
 
-    num_jobs = extract_field(config, 'test', 'num_jobs').split(',')
-    blks = extract_field(config, 'test', 'blk_size').split(',')
-    f_size = extract_field(config, 'test', 'file_size').split(',')
-    mix_read = extract_field(config, 'test', 'mix_read').split(',')
+    num_jobs = extract_man_field(config, 'test', 'num_jobs').split(',')
+    blks = extract_man_field(config, 'test', 'blk_size').split(',')
+    f_size = extract_man_field(config, 'test', 'file_size').split(',')
+    mix_read = extract_man_field(config, 'test', 'mix_read').split(',')
 
     for fst in f_size:
         for job in num_jobs:
@@ -301,10 +293,6 @@ def main(fs_list, config):
 def clear_only(config):
     zfs_destroy(config)
     lvm_destroy(config)
-
-
-def get_fslist(config):
-    return extract_field(config, 'test', 'fs_2test').split(',')
 
 
 parser = argparse.ArgumentParser()
