@@ -295,13 +295,13 @@ def clear_only(config):
     lvm_destroy(config)
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-c", "--clear", action="store_true", required=False,
-                    help="Do disk cleanup. Try to remove all created structures")
-parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
-                    dest="config", help="Test configuration.")
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--clear", action="store_true", required=False,
+                        help="Do disk cleanup. Try to remove all created structures")
+    parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
+                        dest="config", help="Test configuration.")
+
     args = parser.parse_args()
     config = configparser.ConfigParser()
     config.read(args.config.name)

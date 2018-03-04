@@ -226,15 +226,14 @@ def gen_stats_files(root, all, fs):
         for s in stats_root:
             parse(s, f, config)
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
-                    dest="config", help="Test configuration.")
-config = configparser.ConfigParser()
-args = parser.parse_args()
-config.read(args.config.name)
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
+                    dest="config", help="Test configuration.")
+    config = configparser.ConfigParser()
+    args = parser.parse_args()
+    config.read(args.config.name)
+
     fs_list = get_fslist(config)
     root = None
     all = 0
