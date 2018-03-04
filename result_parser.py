@@ -219,7 +219,7 @@ def parse(stats_root, fs, config):
     save_to_file(csv, stats_root[stats_root.rfind('/') + 1:], fs)
 
 
-def gen_stats_files(root, all, fs):
+def gen_stats_files(root, all, fs, config):
     # Clear flag just in case if something went wrong and we need to restore fs to clear
     for f in fs:
         stats_root = get_result_root(f, root, all)
@@ -245,4 +245,4 @@ if __name__ == "__main__":
         if arg1 == "--all":
             all = 1
     print('#: all = {}'.format(all))
-    gen_stats_files(root, all, fs_list)
+    gen_stats_files(root, all, fs_list, config)

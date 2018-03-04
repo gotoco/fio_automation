@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import subprocess
 import shlex
 import configparser
@@ -315,4 +317,4 @@ if __name__ == "__main__":
             sys.exit('Cleanup done! Finishing...')
 
     main(fs_list, config)
-    gen_stats_files(None, 1, fs_list)
+    gen_stats_files(None, 1, fs_list, config)
