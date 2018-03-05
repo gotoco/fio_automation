@@ -1,12 +1,20 @@
 import configparser
+import argparse
 import re
 import os
 import sys
+from configuration import extract_man_field
 
-#patched_kern = '3.10.0-693.17.1.el7'
-patched_kern = '3.10.0-693.17.1.el7'
-unpatched_kern = '3.10.0-693.17.1.el7'
-#unpatched_kern = '3.10.0-693.el7'
+""" Simple script to compare two csv files
+    Input: two files to be compared: A|B
+    Names can be provided as a cmd line args [a,b]
+    Or by default script will iterate path [f] to find any csv with 
+    Filesystem from configuration file in the name and try to make diff.
+    
+    Output is the diff csv file, with 'diff_" suffix and filesystem name. 
+    As a result we got file C = B - A (A is reference version, B is consider as secondary)
+"""
+
 
 def prefix(x):
     return {
@@ -19,7 +27,7 @@ def prefix(x):
     }.get(x, 1)
 
 
-# 100 90 = (90 - 100)/100 * 100 == -10% change
+# 110 90 = (90 - 110)/110 * 100 == -18.18% change
 def get_percent(a, b):
     return (float(b) - float(a))/float(b)*100
 
@@ -107,28 +115,9 @@ def match_and_merge(f1, f2):
 
 # Should load 2 files with fs extension to compare
 # Case when there are three or more files is not handled correctly
-def load_fs_stats(fs):
-    # get root
-    r = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'result')
-    fs_logs = [f for f in os.listdir(r) if fs in f and os.path.isfile(os.path.join(r, f))]
-
-    # f1 will be filled with unpatched kernel logs
-    # f2 with unpatched kernel logs
-    for idx, val in enumerate(fs_logs):
-        with open(os.path.join('result', val)) as f:
-            content = f.readlines()
-
-        content = [x.strip() for x in content]
-        if idx == 0:
-            f1 = content
-        else:
-            f2 = content
-##        if True in map(lambda x: unpatched_kern in x, content):
-##            f1 = content
-##        else:
-##            f2 = content
+def load_fs_stats(fs, f1, f2):
     # Prepare output csv
-    out = open('test_compare_{}.csv'.format(fs), 'w')
+    out = open('diff_{}.csv'.format(fs), 'w')
     title = f1[0]+','+f1[0]+','+get_diff_tag()
     out.write(title)
     out.write('\n')
@@ -162,5 +151,58 @@ def load_fs_stats(fs):
     out.close()
 
 
-load_fs_stats('xfs')
-#load_fs_stats('ext4')
+# Based on the tricky logic/input args find and return files to compare
+def get_files_to_compare(fs, args):
+    # result is a 2 elements list (reference file, secondary file)
+    res = []
+
+    # get root
+    r = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'result')
+
+    # If user explicitly specified A and B return these two files
+    if args.reffile is not None and args.secfile is not None:
+        res.append(open(os.path.join(r, args.reffile)).readlines())
+        res.append(open(os.path.join(r, args.secfile)).readlines())
+        return res
+
+    # If user specified dir path extends root
+    if args.filesdir is not None:
+        r = os.path.join(r, args.filesdir)
+
+    # filter log files, we need them to be in the files with csv file with:
+    # 'parsed_' sufix and '_<fs>' prefix
+    fs_logs = [f for f in os.listdir(r) if fs in f and os.path.isfile(os.path.join(r, f))]
+    fs_logs = [f for f in fs_logs if '.csv' in f]
+
+    sorted(fs_logs)
+
+    if len(fs_logs) < 2:
+        sys.exit('Not found logs to parse. Quiting')
+
+    return [fs_logs[-2], fs_logs[-1]]
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
+                        dest="config", help="Test configuration.")
+    parser.add_argument("-d", "--filesdir", default='./', required=False,
+                        dest="files_directory", help="Where to search for csv to compare")
+    parser.add_argument("-f", "--filesystems", nargs='+', required=False,
+                        dest="filesystems", help="Filesystems to compare")
+    parser.add_argument("-a", "--reffile", nargs='+', required=False,
+                        dest="reffile", help="Filesystems to compare")
+    parser.add_argument("-b", "--secfile", nargs='+', required=False,
+                        dest="secfile", help="Filesystems to compare")
+
+    config = configparser.ConfigParser()
+    args = parser.parse_args()
+    config.read(args.config.name)
+
+    fs_list = args.filesystems
+    if fs_list == None:
+        fs_list = extract_man_field(config, 'test', 'fs2test')
+
+    for fs in fs_list:
+        files = get_files_to_compare(fs, args)
+        load_fs_stats(fs, )
