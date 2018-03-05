@@ -45,14 +45,18 @@ class file_parser(object):
         res = {}
         title = lines[0].split()
         for i in title:
-            res.update({i:[]})
+            res.update({i: []})
 
         for i in range(1, len(lines)):
             cols = lines[i].split()
+            # in case of some stats if title is appended during work
+            # skip non numeric or broken (shorter then title) rows
+            if (i > 1 and not is_number(cols[0])) or (len(cols) < len(title)):
+                continue
             for n in range(len(title)):
                 res[title[n]].append(cols[n])
 
-        return res;
+        return res
 
     """ Find sections inside structural file (fio output)
         Return dictionary {section_name -> section_rows}
