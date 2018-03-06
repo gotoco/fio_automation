@@ -70,7 +70,6 @@ class file_parser(object):
                 start = 1
             if start == 1:
                 if len(r) == 0 or r.isspace():
-                    start = 0
                     break
                 sec.append(r)
 
