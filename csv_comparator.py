@@ -119,7 +119,7 @@ def load_fs_stats(fs, f1, f2):
     first = title[0]
     title = list(map(lambda x: 'd'+x, title[1:]))
     title.insert(0, first)
-    out.write(str(title))
+    out.write(str(title).strip('[]').strip('"').replace('\\n', ''))
     out.write('\n')
     # drop title bar
     f1 = f1[1:]
