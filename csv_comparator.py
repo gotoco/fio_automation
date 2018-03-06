@@ -29,8 +29,10 @@ def prefix(x):
 
 # 110 90 = (90 - 110)/110 * 100 == -18.18% change
 def get_percent(a, b):
-    return (float(b) - float(a))/float(b)*100
-
+    try:
+        return (float(b) - float(a))/float(b)*100
+    except ZeroDivisionError:
+        return 0.0
 
 def get_diff_tag():
     return 'workload,%d(READ),%d(READ-aggrb),%d(WRITE),%d(WRITE-aggrb),%d(ios),d(cs-md),d(cs-av),d(us-md),d(us-av),' \
@@ -43,22 +45,16 @@ def get_diff_tag():
 # workload is not compared
 # [READ:ios] [1:5]we compare on percentage basis
 # [cs-md:wa-av] [6:15] we present as a delta
-def compare_row(r1, r2):
+def compare_row(r1, r2, percent=True):
     r1 = r1.split(',')
     r2 = r2.split(',')
     if len(r1) != len(r2):
         sys.exit("Cannot compare two rows with different size, check input data")
     result = [0] * len(r1)
-    result[0] = r1[0][:r1[0].find('3.10.0')-1]
+    result[0] = r1[0]
     for i in range(1, len(r1)):
-        if i < 5:
+        if percent:
             result[i] = get_percent(r1[i], r2[i])
-        elif i == 5:
-            r1io1 = r1[i][:r1[i].index('/')]
-            r1io2 = r1[i][r1[i].index('/')+1:]
-            r2io1 = r2[i][:r2[i].index('/')]
-            r2io2 = r2[i][r2[i].index('/')+1:]
-            result[i] = '{}/{}'.format(get_percent(r1io1, r2io1), get_percent(r1io2, r2io2))
         else:
             result[i] = float(r2[i]) - float(r1[i])
 #   print(result)
@@ -83,13 +79,13 @@ def cast_prefix(x):
     return b
 
 
-# Format of tag is as follow: <workload>_N_jobs_M<K/M>_blks_J_rrat
+# Format of tag is as follow: <workload>_N_jb_M<K/M>_bl_J_rw
 # We return triple: [jobs: N, blksize: M, rw_rat: J]
 def extract_tag(tag):
-    jobs = int(re.search('_(.+?)_jobs', tag).group(1))
-    blksize = re.search("jobs_(.+?)_blks", tag).group(1)
-    blksize = cast_prefix(blksize)
-    rat = int(re.search("blks_(.+?)_rrat", tag).group(1))
+    lt = tag.split('_')
+    jobs = int(lt[2])
+    blksize = cast_prefix(lt[4])
+    rat = int(lt[6])
     return [jobs, blksize, rat]
 
 
@@ -98,7 +94,8 @@ def comp_triple(a, b):
 
 
 def match_and_merge(f1, f2):
-    # Lets do this in really dummy way
+    # Lets do this in really dummy way because ...
+    # we don't know if rows in csv are placed by test in the same order (we don't want to guarantee that)
     # Fix me after by applying any 'good' pattern
     merged = []
     for a in f1:
@@ -107,7 +104,7 @@ def match_and_merge(f1, f2):
             bt = extract_tag(bval)
             if comp_triple(at, bt):
                 comp_tab = compare_row(a, bval)
-                merged.append(a+','+bval+','+str(comp_tab).strip('[]'))
+                merged.append(str(comp_tab).strip('[]').strip('\n').replace("\'", ""))
                 del(f2[idx])
                 break
     return merged
@@ -118,8 +115,11 @@ def match_and_merge(f1, f2):
 def load_fs_stats(fs, f1, f2):
     # Prepare output csv
     out = open('diff_{}.csv'.format(fs), 'w')
-    title = f1[0]+','+f1[0]+','+get_diff_tag()
-    out.write(title)
+    title = f1[0].split(',')
+    first = title[0]
+    title = list(map(lambda x: 'd'+x, title[1:]))
+    title.insert(0, first)
+    out.write(str(title))
     out.write('\n')
     # drop title bar
     f1 = f1[1:]
@@ -145,8 +145,9 @@ def load_fs_stats(fs, f1, f2):
             # iterate by jobs
             for n in num_jobs:
                 jn = list(filter(lambda x: extract_tag(x)[0] == n, bn))
-                out.write(str(jn).strip('[]').strip('""'))
-                out.write('\n')
+                if len(jn) > 0:
+                    out.write(str(jn).strip('[]').strip('""'))
+                    out.write('\n')
 
     out.close()
 
@@ -157,7 +158,7 @@ def get_files_to_compare(fs, args):
     res = []
 
     # get root
-    r = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'result')
+    r = os.path.dirname(os.path.realpath(__file__))
 
     # If user explicitly specified A and B return these two files
     if args.reffile is not None and args.secfile is not None:
@@ -190,19 +191,17 @@ if __name__ == "__main__":
                         dest="files_directory", help="Where to search for csv to compare")
     parser.add_argument("-f", "--filesystems", nargs='+', required=False,
                         dest="filesystems", help="Filesystems to compare")
-    parser.add_argument("-a", "--reffile", nargs='+', required=False,
-                        dest="reffile", help="Filesystems to compare")
-    parser.add_argument("-b", "--secfile", nargs='+', required=False,
-                        dest="secfile", help="Filesystems to compare")
+    parser.add_argument("-a", "--reffile", required=False, dest="reffile", help="Filesystems to compare")
+    parser.add_argument("-b", "--secfile", required=False, dest="secfile", help="Filesystems to compare")
 
     config = configparser.ConfigParser()
     args = parser.parse_args()
     config.read(args.config.name)
 
     fs_list = args.filesystems
-    if fs_list == None:
+    if fs_list is None:
         fs_list = extract_man_field(config, 'test', 'fs2test')
 
-    for fs in fs_list:
+    for fs in fs_list.split(','):
         files = get_files_to_compare(fs, args)
-        load_fs_stats(fs, )
+        load_fs_stats(fs, files[0], files[1])
