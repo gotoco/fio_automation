@@ -20,7 +20,8 @@ def mkdir_p(path):
     except OSError as exc:
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
-        else: raise
+        else:
+            raise
 
 
 def safe_open_w(path):
@@ -35,9 +36,17 @@ def get_kernel_version():
     return out['output'].decode('ascii').rstrip('\n')
 
 
-def perform_cmd(cmd, verbose=0, fignore=0):
+# Perform bash command
+# Additional args:
+# @verbose : if 1 simply print command before performing it
+# @fignore : if 1 ignore any status from bash and simply return success
+# @redrall : if 1 redirect all to STDIN (simply 2>&1 at the end of command)
+#               Useful with time and perf run with commands
+def perform_cmd(cmd, verbose=0, fignore=0, redirall=0):
     status = 0
     output = ''
+    if redirall == 1:
+        cmd += ' 2>&1'
     if verbose != 0:
         print(cmd)
 
@@ -94,6 +103,20 @@ def append_flag_to_cmdparams(cmd, config, test, property, flag_name):
     return cmd
 
 
+def append_spec_cmds(cmd, config):
+    run_with_perf = bool(extract_man_field(config, 'monitoring', 'run_with_perf'))
+    run_with_time = bool(extract_man_field(config, 'monitoring', 'run_with_time'))
+
+    if run_with_perf:
+        perf_args = extract_man_field(config, 'monitoring', 'perf_args')
+        cmd = 'perf {} {}'.format(perf_args, cmd)
+
+    if run_with_time:
+        cmd = 'time {}'.format(cmd)
+
+    return cmd
+
+
 # Simple mapping fields from config to fio binary
 # List fields from config should be iterate internally and passed as a parameters
 #
@@ -103,9 +126,11 @@ def append_flag_to_cmdparams(cmd, config, test, property, flag_name):
 # @nr_jobs : Number of jobs
 # @f_size : Size of file
 # @mix_read : Ratio R/W
+# @spec_cmds : FIO can also be run inside perf monitoring or with time this param
+#               describe if we want to run inside perf (or time, or both)
 #
 # (This parameter list can be changed to dictionary later if required)
-def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read):
+def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False):
     # Extract configuration
     try:
         test_name = config.get('test', 'test_name')
@@ -120,12 +145,12 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read):
 
     # tag is for marking the result
     tag = gen_tag(test_name, workload, nr_jobs, blk_size, fs, mix_read)
-    pids = start_monitoring('stats_'+tag, fs, interval)
+    pids = start_monitoring('stats_' + tag, fs, interval)
 
     print("performing io")
     cmd = './fio --name={} --bs={} --rw={} --size={} --numjobs={} ' \
-          '--runtime={} --time_based --directory={} --output={} --direct={}'.\
-          format(test_name, blk_size, workload, f_size, nr_jobs, run_time, directory, tag, direct)
+          '--runtime={} --time_based --directory={} --output={} --direct={} '. \
+        format(test_name, blk_size, workload, f_size, nr_jobs, run_time, directory, tag, direct)
 
     if mix_read != -1:
         cmd += ' --rwmixread={}'.format(mix_read)
@@ -139,12 +164,21 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read):
         if val != '':
             cmd += ' {}'.format(val)
 
+    if spec_cmds:
+        cmd = append_spec_cmds(config, cmd)
+
     out = perform_cmd(cmd, 1, 1)
     if out['status'] != 0:
         print('#: warning fio returned error {}\n'.format(out['output']))
 
     # After IO close monitoring
     stop_monitoring(pids)
+
+    # If any additional commands were run put outstanding output to the input file
+    if spec_cmds is True:
+        f_out = open(tag, 'w')
+        f_out.write(out['output'])
+        f_out.close()
 
     return
 
@@ -156,13 +190,13 @@ def lvm_setup(config, fs_type):
     mnt_root = config.get('setup', 'mount_root')
     disk_group_name = config.get('setup', 'disk_group_name')
     lvm_path = '/dev/mapper/{}-{}'.format(dev_name, disk_group_name)
-    devices = ' '.join(list(map((lambda x: '/dev/'+x), drives)))
+    devices = ' '.join(list(map((lambda x: '/dev/' + x), drives)))
 
     cmd = "vgcreate --yes {} {}".format(dev_name, devices)
     print(cmd)
     subprocess.check_output(['bash', '-c', cmd])
 
-    cmd = "lvcreate --yes --stripes {} --stripesize 256 --extents 100%FREE --name {} {}"\
+    cmd = "lvcreate --yes --stripes {} --stripesize 256 --extents 100%FREE --name {} {}" \
         .format(nr_strips, disk_group_name, dev_name)
     print(cmd)
     subprocess.check_output(['bash', '-c', cmd])
@@ -180,7 +214,7 @@ def lvm_destroy(config):
     dev_name = config.get('setup', 'dev_name')
     mnt_root = config.get('setup', 'mount_root')
     disk_group_name = config.get('setup', 'disk_group_name')
-    drives = list(map((lambda x: '/dev/'+x), config.get('setup', 'drives').split(',')))
+    drives = list(map((lambda x: '/dev/' + x), config.get('setup', 'drives').split(',')))
 
     cmd = "umount /{}".format(mnt_root)
     out = perform_cmd(cmd, 1)
@@ -213,7 +247,7 @@ def zfs_setup(config):
     drives = config.get('setup', 'drives').split(',')
     mnt_root = config.get('setup', 'mount_root')
     disk_group_name = config.get('setup', 'disk_group_name')
-    devices = ' '.join(list(map((lambda x: '/dev/'+x), drives)))
+    devices = ' '.join(list(map((lambda x: '/dev/' + x), drives)))
 
     res = perform_cmd("zpool create -f {} {}".format(disk_group_name, devices), 1)
     if res['status'] != 0:
@@ -244,6 +278,13 @@ def wipe_drives(config):
             sys.exit("Error: cannot clear drive: {}\n Closing".format(d))
 
 
+def check_spec_cmds(config):
+    run_with_perf = bool(extract_man_field(config, 'monitoring', 'run_with_perf'))
+    run_with_time = bool(extract_man_field(config, 'monitoring', 'run_with_time'))
+
+    return run_with_perf or run_with_time
+
+
 def run_test(config, fs):
     # Verbose command to see where we are placing our stuff
     dummy = "ls -alhtri"
@@ -255,12 +296,14 @@ def run_test(config, fs):
     f_size = extract_man_field(config, 'test', 'file_size').split(',')
     mix_read = extract_man_field(config, 'test', 'mix_read').split(',')
 
+    spec_cmd = check_spec_cmds(config)
+
     for fst in f_size:
         for job in num_jobs:
             for block in blks:
                 for r in mix_read:
                     # Perform FIO test and do system monitor in the meantime
-                    perform_fio(config, fs, job, block, fst, r)
+                    perform_fio(config, fs, job, block, fst, r, spec_cmd)
                     sleep(5)
 
 
@@ -275,21 +318,28 @@ def move_results(fs, config):
     perform_cmd(cmd, 1, 1)
 
 
-def main(fs_list, config):
+def main(fs_list, config, nformat):
+    if nformat is False:
+        print("#: Warning nformat option chosen, after tests FS won't be clean up")
+        print("\tnformat will run only test for first FS, as it doesn't make sense to loop")
+
+        run_test(config, fs_list[0])
+        move_results(fs_list[0], config)
+        return
 
     for fs in fs_list:
-        if fs == 'zfs':
-            zfs_setup(config)
-        else:
-            lvm_setup(config, fs)
+       if fs == 'zfs':
+           zfs_setup(config)
+       else:
+           lvm_setup(config, fs)
 
-        run_test(config, fs)
-        move_results(fs, config)
+       run_test(config, fs)
+       move_results(fs, config)
 
-        if fs == 'zfs':
-            zfs_destroy(config)
-        else:
-            lvm_destroy(config)
+       if fs == 'zfs':
+           zfs_destroy(config)
+       else:
+           lvm_destroy(config)
 
 
 def clear_only(config):
@@ -303,6 +353,8 @@ if __name__ == "__main__":
                         help="Do disk cleanup. Try to remove all created structures")
     parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
                         dest="config", help="Test configuration.")
+    parser.add_argument("-n", "--nformat", action="store_true", default=False, required=False,
+                        dest="nformat", help="Do format and disk setup before test.")
 
     args = parser.parse_args()
     config = configparser.ConfigParser()
@@ -313,8 +365,8 @@ if __name__ == "__main__":
     # Clear flag should be used in case if something went wrong
     # and we need to restore fs to clear state
     if args.clear:
-            clear_only(config)
-            sys.exit('Cleanup done! Finishing...')
+        clear_only(config)
+        sys.exit('Cleanup done! Finishing...')
 
     main(fs_list, config)
     gen_stats_files(None, 1, fs_list, config)
