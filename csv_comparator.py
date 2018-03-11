@@ -83,9 +83,9 @@ def cast_prefix(x):
 # We return triple: [jobs: N, blksize: M, rw_rat: J]
 def extract_tag(tag):
     lt = tag.split('_')
-    jobs = int(lt[2])
-    blksize = cast_prefix(lt[4])
-    rat = int(lt[6])
+    jobs = int(lt[lt.index('jb')-1])
+    blksize = cast_prefix(lt[lt.index('bl')-1])
+    rat = int(lt[lt.index('rw')-1])
     return [jobs, blksize, rat]
 
 
