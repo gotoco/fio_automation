@@ -165,9 +165,9 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False
             cmd += ' {}'.format(val)
 
     if spec_cmds:
-        cmd = append_spec_cmds(config, cmd)
+        cmd = append_spec_cmds(cmd, config)
 
-    out = perform_cmd(cmd, 1, 1)
+    out = perform_cmd(cmd, 1, 1, 1)
     if out['status'] != 0:
         print('#: warning fio returned error {}\n'.format(out['output']))
 
@@ -176,7 +176,7 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False
 
     # If any additional commands were run put outstanding output to the input file
     if spec_cmds is True:
-        f_out = open(tag, 'w')
+        f_out = open(tag, 'ab')
         f_out.write(out['output'])
         f_out.close()
 
@@ -319,7 +319,7 @@ def move_results(fs, config):
 
 
 def main(fs_list, config, nformat):
-    if nformat is False:
+    if nformat is True:
         print("#: Warning nformat option chosen, after tests FS won't be clean up")
         print("\tnformat will run only test for first FS, as it doesn't make sense to loop")
 
@@ -368,5 +368,5 @@ if __name__ == "__main__":
         clear_only(config)
         sys.exit('Cleanup done! Finishing...')
 
-    main(fs_list, config)
+    main(fs_list, config, args.nformat)
     gen_stats_files(None, 1, fs_list, config)
