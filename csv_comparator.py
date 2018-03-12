@@ -114,7 +114,9 @@ def match_and_merge(f1, f2):
 # Case when there are three or more files is not handled correctly
 def load_fs_stats(fs, f1, f2):
     # Prepare output csv
-    out = open('diff_{}.csv'.format(fs), 'w')
+    a_name = f1[1].split(',')[0].split('_')[:f1[1].split(',')[0].split('_').index('jb')-2]
+    b_name = f2[1].split(',')[0].split('_')[:f2[1].split(',')[0].split('_').index('jb')-2]
+    out = open('diff_{}_A{}_B{}.csv'.format(fs, '_'.join(a_name), '_'.join(b_name)), 'w')
     title = f1[0].split(',')
     first = title[0]
     title = list(map(lambda x: 'd'+x, title[1:]))
@@ -198,10 +200,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config.read(args.config.name)
 
+    if args.reffile is not None and args.secfile is not None:
+        files = get_files_to_compare('doesnt matter', args)
+        load_fs_stats('doesnt matter', files[0], files[1])
+
     fs_list = args.filesystems
     if fs_list is None:
         fs_list = extract_man_field(config, 'test', 'fs2test')
 
-    for fs in fs_list.split(','):
+    for fs in fs_list:
         files = get_files_to_compare(fs, args)
         load_fs_stats(fs, files[0], files[1])
