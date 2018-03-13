@@ -32,7 +32,7 @@ class file_parser(object):
             # Skip first line in vmstat
             content = self.parse_file_array(f.readlines()[1:])
         elif file_type == file_parser.FILE_FIO_OUT:
-            content = self.parse_file_sections(f.readlines())
+            content = self.parse_file_sections(f)
 
         return content
 
@@ -129,7 +129,8 @@ class file_parser(object):
         # Not done yet:
             - stats per process
     """
-    def parse_file_sections(self, rows):
+    def parse_file_sections(self, file):
+        rows = file.readlines()
         values = {}
 
         # TODO: move this stuff as a method parameter (configuration object)
@@ -149,9 +150,13 @@ class file_parser(object):
             # Find sections
             selected_section = file_parser.find_sections(rows, s)
 
+            if len(selected_section) == 0:
+                print('It looks like given log file is broken: See raw content below:'.format(sections))
+                raise AssertionError("Log file {} most likely broken!".format(file))
+
             # Find fields in sections
             for i in range(0, len(description[s])):
-                values.update({title[s][i]: file_parser.get_field_from_section(selected_section, description[s][i])} )
+                values.update({title[s][i]: file_parser.get_field_from_section(selected_section, description[s][i])})
 
         return values
 

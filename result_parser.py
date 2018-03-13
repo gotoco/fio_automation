@@ -133,7 +133,7 @@ def vms_range(values, length):
         if '%' in values[i]:
             values[i] = float(values[i].strip('%')) / 100 * length
         else:
-            if isBlank(values[i]):
+            if is_blank(values[i]):
                 if i == 0:
                     values[i] = 0
                 else:
@@ -144,7 +144,7 @@ def vms_range(values, length):
     return slice(values[0], values[1])
 
 
-def isBlank(myString):
+def is_blank(myString):
     if myString and myString.strip():
         return False
     return True
@@ -213,10 +213,28 @@ def save_to_file(csv, tag, fs):
     out.close()
 
 
+def get_tag(stats_root, config):
+    files = [f for f in os.listdir(stats_root) if os.path.isfile(os.path.join(stats_root, f))]
+    workload = config.get('test', 'workload')
+    res = []
+    if len(files) < 1:
+        return 'ERROR'
+
+    for f in files:
+        # Skip swaps just in case :)
+        if '.swp' in f:
+            continue
+        os.path.join(stats_root, f)
+        res.append((lambda x: '_'.join(x[:x.index(workload)]))(f.split('_')))
+    # Get middle element right now
+    return res[int(len(res)/2)]
+
+
 def parse(stats_root, fs, config):
+    tag = get_tag(stats_root, config)
     stat = parse_monitor_files(stats_root, config)
     csv = generate_csv(stat, config)
-    save_to_file(csv, stats_root[stats_root.rfind('/') + 1:], fs)
+    save_to_file(csv, stats_root[stats_root.rfind('/') + 1:] + '_' + tag, fs)
 
 
 def gen_stats_files(root, all, fs, config):
@@ -231,6 +249,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
                             dest="config", help="Test configuration.")
+    parser.add_argument("-d", "--test_dir", default='', required=False,
+                        dest="testdir", help="Directory with results to parse.")
     config = configparser.ConfigParser()
     args = parser.parse_args()
     config.read(args.config.name)
@@ -239,11 +259,8 @@ if __name__ == "__main__":
     root = None
     all = 0
     # TODO: I am broken please use argpars!
-    if len(sys.argv) > 1:
-        arg1 = sys.argv[1]
-        if arg1 is "--test_dir" and sys.argv > 2:
-            root = sys.argv[2]
-        if arg1 == "--all":
+    if args.testdir:
+            root = args.testdir
             all = 1
     print('#: all = {}'.format(all))
     gen_stats_files(root, all, fs_list, config)
