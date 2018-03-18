@@ -185,6 +185,14 @@ def get_files_to_compare(fs, args):
     return [fs_logs[-2], fs_logs[-1]]
 
 
+def get_fs_from_name(fname):
+    # just do it in dummy way:
+    fss = ['ext3', 'ext4', 'xfs', 'zfs', 'btrfs']
+    for f in fss:
+        if f in fname.lower():
+            return f
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--config", type=open, default='test_config.ini', required=False,
@@ -202,11 +210,16 @@ if __name__ == "__main__":
 
     if args.reffile is not None and args.secfile is not None:
         files = get_files_to_compare('doesnt matter', args)
-        load_fs_stats('doesnt matter', files[0], files[1])
+        fs_name = get_fs_from_name(files[0][1])
+        load_fs_stats(fs_name, files[0], files[1])
+        sys.exit('Diff generated')
 
     fs_list = args.filesystems
     if fs_list is None:
         fs_list = extract_man_field(config, 'test', 'fs2test')
+
+    if isinstance(fs_list, str):
+        fs_list = fs_list.split(',')
 
     for fs in fs_list:
         files = get_files_to_compare(fs, args)
