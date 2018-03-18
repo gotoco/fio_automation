@@ -84,9 +84,19 @@ def stop_monitoring(pid_list):
         os.kill(pid, signal.SIGKILL)
 
 
-def gen_tag(test_name, workload, num_jobs, blk_size, fs, rwmix=0):
+def gen_tag(fio_obj):
     kernel = get_kernel_version()
-    return '{}_{}_{}_jb_{}_bl_{}_rw_{}_{}'.format(test_name, workload, num_jobs, blk_size, rwmix, fs, kernel)
+    test_name = fio_obj['test_name']
+    workload = fio_obj['workload']
+    num_jobs = fio_obj['num_jobs']
+    blk_size = fio_obj['blks']
+    rwmix = fio_obj['mix_read']
+    fs = fio_obj['fs']
+    st = fio_obj['f_size']
+    ie = fio_obj['io_engine']
+    nf = fio_obj['nr_files']
+    return '{}_{}_{}_jb_{}_bl_{}_rw_{}_{}_st_{}_ie_{}_nf_{}'.format(
+        test_name, workload, num_jobs, blk_size, rwmix, fs, kernel, st, ie, nf)
 
 
 # Append to cmd field from config
@@ -130,21 +140,30 @@ def append_spec_cmds(cmd, config):
 #               describe if we want to run inside perf (or time, or both)
 #
 # (This parameter list can be changed to dictionary later if required)
-def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False):
+# def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False):
+def perform_fio(config, fio_obj, spec_cmds=False):
     # Extract configuration
     try:
-        test_name = config.get('test', 'test_name')
-        workload = config.get('test', 'workload')
-        run_time = config.get('test', 'run_time')
-        directory = config.get('test', 'directory')
-        direct = config.get('test', 'direct')
-        interval = config.get('test', 'interval')
-    except configparser.NoOptionError as ex:
+        test_name = fio_obj['test_name']
+        workload = fio_obj['workload']
+        run_time = fio_obj['run_time']
+        directory = fio_obj['directory']
+        direct = fio_obj['direct']
+        interval = fio_obj['interval']
+        nr_jobs = fio_obj['num_jobs']
+        blk_size = fio_obj['blks']
+        fs = fio_obj['fs']
+        mix_read = fio_obj['mix_read']
+        f_size = fio_obj['f_size']
+        nr_files = fio_obj['nr_files']
+        io_engine = fio_obj['io_engine']
+
+    except KeyError as ex:
         print('Error during configuration parsing!\nMandatory field missing:\n{}'.format(ex))
         return
 
     # tag is for marking the result
-    tag = gen_tag(test_name, workload, nr_jobs, blk_size, fs, mix_read)
+    tag = gen_tag(fio_obj)
     pids = start_monitoring('stats_' + tag, fs, interval)
 
     print("performing io")
@@ -155,7 +174,11 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False
     if mix_read != -1:
         cmd += ' --rwmixread={}'.format(mix_read)
 
-    cmd = append_flag_to_cmdparams(cmd, config, 'test', 'ioengine', 'ioengine')
+    if nr_files > 0:
+        cmd += ''
+
+    if io_engine is not False:
+        cmd += ' --ioengine={}'.format(io_engine)
 
     cmd = append_flag_to_cmdparams(cmd, config, 'test', 'iodepth', 'iodepth')
 
@@ -166,6 +189,11 @@ def perform_fio(config, fs, nr_jobs, blk_size, f_size, mix_read, spec_cmds=False
 
     if spec_cmds:
         cmd = append_spec_cmds(cmd, config)
+
+    if config.has_option('test', 'aggregate_jobs'):
+        val = config.get('test', 'aggregate_jobs')
+        if val != 0:
+            cmd += ' --group_reporting=1'
 
     out = perform_cmd(cmd, 1, 1, 1)
     if out['status'] != 0:
@@ -290,21 +318,50 @@ def run_test(config, fs):
     dummy = "ls -alhtri"
     output = subprocess.check_output(['bash', '-c', dummy])
     print(output.decode('ascii'))
+    fio_obj = {'num_jobs': '', 'blks': '', 'f_size': '', 'mix_read': '', 'workload': ''}
 
-    num_jobs = extract_man_field(config, 'test', 'num_jobs').split(',')
-    blks = extract_man_field(config, 'test', 'blk_size').split(',')
-    f_size = extract_man_field(config, 'test', 'file_size').split(',')
-    mix_read = extract_man_field(config, 'test', 'mix_read').split(',')
+    try:
+        # @Iterable params
+        num_jobs = extract_man_field(config, 'test', 'num_jobs').split(',')
+        blks = extract_man_field(config, 'test', 'blk_size').split(',')
+        f_size = extract_man_field(config, 'test', 'file_size').split(',')
+        mix_read = extract_man_field(config, 'test', 'mix_read').split(',')
+        workloads = extract_man_field(config, 'test', 'workload').split(',')
+        nr_files = extract_man_field(config, 'test', 'nr_files').split(',')
+        io_engine = extract_man_field(config, 'test', 'ioengine').split(',')
+
+        fio_obj.update({'test_name': config.get('test', 'test_name')})
+        fio_obj.update({'run_time': config.get('test', 'run_time')})
+        fio_obj.update({'directory': config.get('test', 'directory')})
+        fio_obj.update({'direct': config.get('test', 'direct')})
+        fio_obj.update({'interval': config.get('test', 'interval')})
+        fio_obj.update({'fs': fs})
+    except configparser.NoOptionError as ex:
+        print('Error during configuration parsing!\nMandatory field missing:\n{}'.format(ex))
+        return
 
     spec_cmd = check_spec_cmds(config)
 
-    for fst in f_size:
-        for job in num_jobs:
-            for block in blks:
-                for r in mix_read:
-                    # Perform FIO test and do system monitor in the meantime
-                    perform_fio(config, fs, job, block, fst, r, spec_cmd)
-                    sleep(5)
+    # This looks like terrible way but for the moment leave it as it is because is simple
+    for w in workloads:
+        for fst in f_size:
+            for nrf in nr_files:
+                for job in num_jobs:
+                    for block in blks:
+                        for r in mix_read:
+                            for i in io_engine:
+                                # Fill fio_obj with basic options:
+                                fio_obj['num_jobs'] = job
+                                fio_obj['blks'] = block
+                                fio_obj['f_size'] = fst
+                                fio_obj['mix_read'] = r
+                                fio_obj['workload'] = w
+                                fio_obj['nr_files'] = nrf
+                                fio_obj['io_engine'] = i
+
+                                # Perform FIO test and do system monitor in the meantime
+                                perform_fio(config, fio_obj, spec_cmd)
+                                sleep(5)
 
 
 def move_results(fs, config):
