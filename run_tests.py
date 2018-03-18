@@ -11,6 +11,7 @@ import argparse
 from time import gmtime, strftime, sleep
 from result_parser import gen_stats_files
 from configuration import extract_man_field
+from configuration import extract_opt_field
 from configuration import get_fslist
 
 
@@ -211,6 +212,36 @@ def perform_fio(config, fio_obj, spec_cmds=False):
     return
 
 
+def get_ext4_mount_extras(config):
+    if extract_opt_field(config, 'setup_ext4', 'mkfs') is not None:
+        return extract_opt_field(config, 'setup_ext4', 'mkfs')
+    else:
+        return ''
+
+
+def get_xfs_mount_extras(config):
+    if extract_opt_field(config, 'setup_xfs', 'mkfs') is not None:
+        return extract_opt_field(config, 'setup_xfs', 'mkfs')
+    else:
+        return ''
+
+
+def fs_mkfs(config, fs, path):
+    cmd = "mkfs -t {} {}".format(fs, path)
+    return cmd
+
+
+def fs_mount(config, fs, path, root):
+    extra = ''
+    if fs is 'ext4':
+        extra = get_ext4_mount_extras(config)
+    elif fs is 'xfs':
+        extra = get_xfs_mount_extras(config)
+
+    cmd = "mount -t {} {} {} {}".format(fs, extra, path, root)
+    return cmd
+
+
 def lvm_setup(config, fs_type):
     drives = config.get('setup', 'drives').split(',')
     nr_strips = len(drives)
@@ -229,11 +260,11 @@ def lvm_setup(config, fs_type):
     print(cmd)
     subprocess.check_output(['bash', '-c', cmd])
 
-    cmd = "mkfs -t {} {}".format(fs_type, lvm_path)
+    cmd = fs_mkfs(config, fs_type, lvm_path)
     print(cmd)
     subprocess.check_output(['bash', '-c', cmd])
 
-    cmd = "mount -t {} {} {}".format(fs_type, lvm_path, mnt_root)
+    cmd = fs_mount(config, fs_type, lvm_path, mnt_root)
     print(cmd)
     subprocess.check_output(['bash', '-c', cmd])
 
@@ -359,10 +390,11 @@ def run_test(config, fs):
                                 fio_obj['nr_files'] = nrf
                                 fio_obj['io_engine'] = i
 
+                                fs_setup(config, fs)
+                                sleep(5)
                                 # Perform FIO test and do system monitor in the meantime
                                 perform_fio(config, fio_obj, spec_cmd)
-                                sleep(5)
-
+                                fs_destroy(config, fs)
 
 def move_results(fs, config):
     workload = config.get('test', 'workload')
@@ -375,6 +407,20 @@ def move_results(fs, config):
     perform_cmd(cmd, 1, 1)
 
 
+def fs_setup(config, fs):
+    if fs == 'zfs':
+        zfs_setup(config)
+    else:
+        lvm_setup(config, fs)
+
+
+def fs_destroy(config, fs):
+    if fs == 'zfs':
+        zfs_destroy(config)
+    else:
+        lvm_destroy(config)
+
+
 def main(fs_list, config, nformat):
     if nformat is True:
         print("#: Warning nformat option chosen, after tests FS won't be clean up")
@@ -385,18 +431,8 @@ def main(fs_list, config, nformat):
         return
 
     for fs in fs_list:
-       if fs == 'zfs':
-           zfs_setup(config)
-       else:
-           lvm_setup(config, fs)
-
-       run_test(config, fs)
-       move_results(fs, config)
-
-       if fs == 'zfs':
-           zfs_destroy(config)
-       else:
-           lvm_destroy(config)
+        run_test(config, fs)
+        move_results(fs, config)
 
 
 def clear_only(config):

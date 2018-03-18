@@ -12,5 +12,14 @@ def extract_man_field(config, section, fname):
     return val
 
 
+def extract_opt_field(config, section, fname):
+    try:
+        val = config.get(section, fname)
+    except configparser.NoOptionError as ex:
+        return None
+
+    return val
+
+
 def get_fslist(config):
     return extract_man_field(config, 'test', 'fs2test').split(',')
