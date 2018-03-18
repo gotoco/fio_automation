@@ -174,8 +174,8 @@ def perform_fio(config, fio_obj, spec_cmds=False):
     if mix_read != -1:
         cmd += ' --rwmixread={}'.format(mix_read)
 
-    if nr_files > 0:
-        cmd += ''
+    if int(nr_files) > 0:
+        cmd += ' --nrfiles={}'.format(nr_files)
 
     if io_engine is not False:
         cmd += ' --ioengine={}'.format(io_engine)
