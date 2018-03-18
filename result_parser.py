@@ -258,9 +258,7 @@ if __name__ == "__main__":
     fs_list = get_fslist(config)
     root = None
     all = 0
-    # TODO: I am broken please use argpars!
     if args.testdir:
             root = args.testdir
             all = 1
-    print('#: all = {}'.format(all))
     gen_stats_files(root, all, fs_list, config)
