@@ -36,6 +36,21 @@ cd fio
 
 make && make install
 ```
+### Other important tools
+If you don't have installed Filesystem utilities, lvm or perf
+Section below can be helpful
+
+```bash
+# For Ubuntu
+apt install -f lvm2
+apt install -f zfsutils-linux
+apt install -f sysstat
+apt install -f xfsprogs
+apt install -f btrfs-tools
+
+apt install linux-tools-common
+apt install linux-tools-`uname -r`-generic
+```
 
 ### Python
 
