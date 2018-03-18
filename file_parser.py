@@ -158,6 +158,31 @@ class file_parser(object):
             for i in range(0, len(description[s])):
                 values.update({title[s][i]: file_parser.get_field_from_section(selected_section, description[s][i])})
 
+        perf_header = 'Performance counter stats'
+        perf_end = 'seconds time elapsed'
+        # Get Perf Stats
+        start = 0
+        time = 0
+        counters = []
+        for s in rows:
+            if perf_end in s:
+                time = float(s.split()[0])
+                break;
+            if perf_header in s or start==1:
+                start = 1
+                if s.isspace():
+                    continue
+                else:
+                    counters.append(s)
+        del(counters[0])
+        perf_cnt = {}
+        for idx, v in enumerate(counters):
+            val = int(v.split()[0].replace(",", ""))
+            val /= time
+            perf_cnt.update({idx: val})
+        if len(perf_cnt) > 0:
+            values.update({'perf_cnt': perf_cnt})
+
         return values
 
 
