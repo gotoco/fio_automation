@@ -258,7 +258,9 @@ if __name__ == "__main__":
     fs_list = get_fslist(config)
     root = None
     all = 0
+
     if args.testdir:
             root = args.testdir
             all = 1
+
     gen_stats_files(root, all, fs_list, config)
