@@ -174,14 +174,15 @@ class file_parser(object):
                     continue
                 else:
                     counters.append(s)
-        del(counters[0])
-        perf_cnt = {}
-        for idx, v in enumerate(counters):
-            val = int(v.split()[0].replace(",", ""))
-            val /= time
-            perf_cnt.update({idx: val})
-        if len(perf_cnt) > 0:
-            values.update({'perf_cnt': perf_cnt})
+        if len(counters) > 0:
+            del(counters[0])
+            perf_cnt = {}
+            for idx, v in enumerate(counters):
+                val = int(v.split()[0].replace(",", ""))
+                val /= time
+                perf_cnt.update({idx: val})
+            if len(perf_cnt) > 0:
+                values.update({'perf_cnt': perf_cnt})
 
         return values
 
