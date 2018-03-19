@@ -345,10 +345,6 @@ def check_spec_cmds(config):
 
 
 def run_test(config, fs):
-    # Verbose command to see where we are placing our stuff
-    dummy = "ls -alhtri"
-    output = subprocess.check_output(['bash', '-c', dummy])
-    print(output.decode('ascii'))
     fio_obj = {'num_jobs': '', 'blks': '', 'f_size': '', 'mix_read': '', 'workload': ''}
 
     try:
@@ -395,6 +391,7 @@ def run_test(config, fs):
                                 # Perform FIO test and do system monitor in the meantime
                                 perform_fio(config, fio_obj, spec_cmd)
                                 fs_destroy(config, fs)
+
 
 def move_results(fs, config):
     workload = config.get('test', 'workload')
