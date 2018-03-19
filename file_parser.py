@@ -134,6 +134,7 @@ class file_parser(object):
         values = {}
 
         # TODO: move this stuff as a method parameter (configuration object)
+        # TODO: Item list should be embeddable inside config file
         disk_stats_tag = 'Disk stats (read/write):'
         ios_r = 'ios_r'
         ios_w = 'ios_w'
@@ -142,21 +143,25 @@ class file_parser(object):
         read_bw = ['READ', 'bw']
         write_bw = ['WRITE', 'bw']
 
-        sections = [disk_stats_tag, status_group_tag]
-        description = {status_group_tag: [read_bw, write_bw],  disk_stats_tag: [[1, 'ios', '/', 0], [1, 'ios', '/', 1]]}
-        title = {status_group_tag: [read_bw[0], write_bw[0]], disk_stats_tag: [ios_r, ios_w]}
+#        description = [[read_bw, write_bw],  [[1, 'ios', '/', 0], [1, 'ios', '/', 1]]]
+#        title = {status_group_tag: [read_bw[0], write_bw[0]], disk_stats_tag: [ios_r, ios_w]}
+        # List of all items that need to be extracted from the file
+        item_list = [{'section': status_group_tag, 'title': read_bw[0], 'description': read_bw},
+                     {'section': status_group_tag, 'title': write_bw[0], 'description': write_bw},
+                     {'section': status_group_tag, 'title': ios_r, 'description': ['READ', 'io']},
+                     {'section': status_group_tag, 'title': ios_w, 'description': ['WRITE', 'io']},
+                     ]
 
-        for s in sections:
+        for i in item_list:
             # Find sections
-            selected_section = file_parser.find_sections(rows, s)
+            selected_section = file_parser.find_sections(rows, i['section'])
 
             if len(selected_section) == 0:
-                print('It looks like given log file is broken: See raw content below:'.format(sections))
+                print('It looks like given log file is broken: See raw content below:'.format(i['section']))
                 raise AssertionError("Log file {} most likely broken!".format(file))
 
             # Find fields in sections
-            for i in range(0, len(description[s])):
-                values.update({title[s][i]: file_parser.get_field_from_section(selected_section, description[s][i])})
+            values.update({i['title']: file_parser.get_field_from_section(selected_section, i['description'])})
 
         perf_header = 'Performance counter stats'
         perf_end = 'seconds time elapsed'
@@ -167,8 +172,8 @@ class file_parser(object):
         for s in rows:
             if perf_end in s:
                 time = float(s.split()[0])
-                break;
-            if perf_header in s or start==1:
+                break
+            if perf_header in s or start == 1:
                 start = 1
                 if s.isspace():
                     continue
