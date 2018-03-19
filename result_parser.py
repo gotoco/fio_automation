@@ -170,9 +170,9 @@ def parse_vms_fields(vms, fields, vmstat_fields):
 def get_perf_fields(cfg, stats):
     perf_fields = extract_man_field(cfg, 'csv_output', 'perf_fields')
     number = 0
-    if perf_fields is '(all)':
-        if 'perf_cnt' in stats[0].keys():
-            number = len(stats[0]['perf_cnt'])
+    if perf_fields == '(all)':
+        if 'perf_cnt' in stats[0]['fio_out'].keys():
+            number = len(stats[0]['fio_out']['perf_cnt'])
     res = ''
     for i in range(0, number):
         res += ',p{}'.format(i)
@@ -214,8 +214,10 @@ def generate_csv(stats, cfg):
             elif j in vms:
                 row += '{},'.format(vms[j])
         if len(perf_fields) > 0:
-            for k in range(0, len(fio['perf_cnt'])):
-                row += ',{}'.format(fio['perf_cnt'][k])
+            # remove double colon
+            row = row[:-1]
+            for k in range(0, len(i['fio_out']['perf_cnt'])):
+                row += ',{}'.format(i['fio_out']['perf_cnt'][k])
         csv.append(row)
 
     return csv
