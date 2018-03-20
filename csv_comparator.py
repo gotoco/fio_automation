@@ -93,16 +93,25 @@ def comp_triple(a, b):
     return a[0] == b[0] and a[1] == b[1] and a[2] == b[2]
 
 
+def comp_tags(a, b):
+    for key, val in a.items():
+        if b[key] != val:
+            return False
+    return True
+
+
 def match_and_merge(f1, f2):
     # Lets do this in really dummy way because ...
     # we don't know if rows in csv are placed by test in the same order (we don't want to guarantee that)
     # Fix me after by applying any 'good' pattern
+    dims = {'jb': -1, 'bl': -1, 'rw': -1, 'st': 1, 'ie': 1, 'nf': 1}
+
     merged = []
     for a in f1:
-        at = extract_tag(a)
+        at = get_stats(a.split(',')[0], dims)
         for idx, bval in enumerate(f2):
-            bt = extract_tag(bval)
-            if comp_triple(at, bt):
+            bt = get_stats(bval.split(',')[0], dims)
+            if comp_tags(at, bt):
                 comp_tab = compare_row(a, bval)
                 merged.append(str(comp_tab).strip('[]').strip('\n').replace("\'", ""))
                 del(f2[idx])
@@ -148,8 +157,71 @@ def load_fs_stats(fs, f1, f2):
             for n in num_jobs:
                 jn = list(filter(lambda x: extract_tag(x)[0] == n, bn))
                 if len(jn) > 0:
-                    out.write(str(jn).strip('[]').strip('""'))
+                    out.write(str(jn).strip('[]').strip('""').strip("''"))
                     out.write('\n')
+
+    out.close()
+
+
+def get_stats(row, fields):
+    res = {}
+    list = row.split('_')
+    for key, val in fields.items():
+        res.update({key: list[list.index(key)+val]})
+    return res
+
+
+# Should load 2 files with fs extension to compare
+# Case when there are three or more files is not handled correctly
+def load_fs_stats2(fs, f1, f2):
+    # Prepare output csv
+    a_name = f1[1].split(',')[0].split('_')[:f1[1].split(',')[0].split('_').index('jb')-2]
+    b_name = f2[1].split(',')[0].split('_')[:f2[1].split(',')[0].split('_').index('jb')-2]
+    out = open('diff_{}_A{}_B{}.csv'.format(fs, '_'.join(a_name), '_'.join(b_name)), 'w')
+    title = f1[0].split(',')
+    first = title[0]
+    title = list(map(lambda x: 'd'+x, title[1:]))
+    title.insert(0, first)
+    out.write(str(title).strip('[]').strip('"').replace('\\n', ''))
+    out.write('\n')
+    # drop title bar
+    f1 = f1[1:]
+    f2 = f2[1:]
+    f3 = match_and_merge(f1, f2)
+
+    # Get parameters lists
+    config = configparser.ConfigParser()
+    config.read('test_config.ini')
+
+    dims = {'jb': -1, 'bl': -1, 'rw': -1, 'st': 1, 'ie': 1, 'nf': 1}
+
+    num_jobs = sorted(set(map(lambda x: int(get_stats(x.split(',')[0], dims)['jb']), f3)))
+    blks = sorted(set(map(lambda x: cast_prefix(get_stats(x.split(',')[0], dims)['bl']), f3)))
+    mix_read = sorted(set(map(lambda x: int(get_stats(x.split(',')[0], dims)['rw']), f3)))
+    size_file = sorted(set(map(lambda x: cast_prefix(get_stats(x.split(',')[0], dims)['st']), f3)))
+    io_engine = set(map(lambda x: get_stats(x.split(',')[0], dims)['ie'], f3))
+    f_nr = sorted(set(map(lambda x: int(get_stats(x.split(',')[0], dims)['nf']), f3)))
+
+    # Here we generate series of benchmark where we do iterate by parameters
+    # split by io_engine
+    for ie in io_engine:
+        fie = list(filter(lambda x: get_stats(x.split(',')[0], dims)['ie'] == ie, f3))
+        for st in f_nr:
+            fnf = list(filter(lambda x: cast_prefix(get_stats(x.split(',')[0], dims)['nf']) == st, fie))
+            for sf in size_file:
+                fst = list(filter(lambda x: cast_prefix(get_stats(x.split(',')[0], dims)['st']) == sf, fnf))
+                # split by rwmix
+                for j in mix_read:
+                    fj = list(filter(lambda x: extract_tag(x.split(',')[0])[2] == int(j), fst))
+                    # split by blk_size
+                    for b in blks:
+                        bn = list(filter(lambda x: extract_tag(x.split(',')[0])[1] == b, fj))
+                        # iterate by jobs
+                        for n in num_jobs:
+                            jn = list(filter(lambda x: extract_tag(x.split(',')[0])[0] == n, bn))
+                            if len(jn) > 0:
+                                out.write(str(jn).strip('[]').strip('""').strip("''"))
+                                out.write('\n')
 
     out.close()
 
@@ -211,8 +283,9 @@ if __name__ == "__main__":
     if args.reffile is not None and args.secfile is not None:
         files = get_files_to_compare('doesnt matter', args)
         fs_name = get_fs_from_name(files[0][1])
-        load_fs_stats(fs_name, files[0], files[1])
-        sys.exit('Diff generated')
+        load_fs_stats2(fs_name, files[0], files[1])
+        print('Diff generated')
+        sys.exit(0)
 
     fs_list = args.filesystems
     if fs_list is None:
