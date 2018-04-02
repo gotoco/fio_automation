@@ -394,14 +394,17 @@ def run_test(config, fs):
 
 
 def move_results(fs, config):
-    workload = config.get('test', 'workload')
-    time = strftime("%Y-%m-%d_%H:%M:%S", gmtime())
-    path = '{}/{}'.format(fs, time)
-    cmd = 'mkdir -p {}'.format(path)
-    perform_cmd(cmd)
+    workload = config.get('test', 'workload').split(',')
+    workload.sort(key=len, reverse=True)
 
-    cmd = 'mv `ls | grep {} | grep {}` {}'.format(workload, fs, path)
-    perform_cmd(cmd, 1, 1)
+    for w in workload:
+        time = strftime("%Y-%m-%d_%H:%M:%S", gmtime())
+        path = '{}/{}_{}'.format(fs, w, time)
+        cmd = 'mkdir -p {}'.format(path)
+        perform_cmd(cmd)
+
+        cmd = 'mv `ls | grep {} | grep {}` {}'.format(w, fs, path)
+        perform_cmd(cmd, 1, 1)
 
 
 def fs_setup(config, fs):

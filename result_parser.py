@@ -236,7 +236,7 @@ def save_to_file(csv, tag, fs):
 
 def get_tag(stats_root, config):
     files = [f for f in os.listdir(stats_root) if os.path.isfile(os.path.join(stats_root, f))]
-    workload = config.get('test', 'workload')
+    workload = config.get('test', 'workload').split(',').sort(key=len, reverse=True)
     res = []
     if len(files) < 1:
         return 'ERROR'
