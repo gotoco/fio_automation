@@ -344,7 +344,7 @@ def check_spec_cmds(config):
     return run_with_perf or run_with_time
 
 
-def run_test(config, fs):
+def run_test(config, fs, nformat):
     fio_obj = {'num_jobs': '', 'blks': '', 'f_size': '', 'mix_read': '', 'workload': ''}
 
     try:
@@ -386,11 +386,15 @@ def run_test(config, fs):
                                 fio_obj['nr_files'] = nrf
                                 fio_obj['io_engine'] = i
 
-                                fs_setup(config, fs)
+                                if nformat is False:
+                                    fs_setup(config, fs)
+
                                 sleep(5)
                                 # Perform FIO test and do system monitor in the meantime
                                 perform_fio(config, fio_obj, spec_cmd)
-                                fs_destroy(config, fs)
+
+                                if nformat is False:
+                                    fs_destroy(config, fs)
 
 
 def move_results(fs, config):
@@ -426,12 +430,12 @@ def main(fs_list, config, nformat):
         print("#: Warning nformat option chosen, after tests FS won't be clean up")
         print("\tnformat will run only test for first FS, as it doesn't make sense to loop")
 
-        run_test(config, fs_list[0])
+        run_test(config, fs_list[0], True)
         move_results(fs_list[0], config)
         return
 
     for fs in fs_list:
-        run_test(config, fs)
+        run_test(config, fs, False)
         move_results(fs, config)
 
 
