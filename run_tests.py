@@ -357,11 +357,11 @@ def run_test(config, fs):
         nr_files = extract_man_field(config, 'test', 'nr_files').split(',')
         io_engine = extract_man_field(config, 'test', 'ioengine').split(',')
 
-        fio_obj.update({'test_name': config.get('test', 'test_name')})
-        fio_obj.update({'run_time': config.get('test', 'run_time')})
-        fio_obj.update({'directory': config.get('test', 'directory')})
-        fio_obj.update({'direct': config.get('test', 'direct')})
-        fio_obj.update({'interval': config.get('test', 'interval')})
+        fio_obj.update({'test_name': extract_man_field(config, 'test', 'test_name')})
+        fio_obj.update({'run_time': extract_man_field(config, 'test', 'run_time')})
+        fio_obj.update({'directory': extract_man_field(config, 'test', 'directory')})
+        fio_obj.update({'direct': extract_man_field(config, 'test', 'direct')})
+        fio_obj.update({'interval': extract_man_field(config, 'test', 'interval')})
         fio_obj.update({'fs': fs})
     except configparser.NoOptionError as ex:
         print('Error during configuration parsing!\nMandatory field missing:\n{}'.format(ex))
