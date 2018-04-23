@@ -112,12 +112,19 @@ def parse_monitor_files(stats_root, cfg):
         # Skip swaps just in case :)
         if '.swp' in f:
             continue
-        # Currently we support only FIO output and vmstat output
-        tmp.update({'fio_out': parser.parse(file_parser.FILE_FIO_OUT, os.path.join(stats_root, f))})
-        tmp.update(
-            {'vms_out': parser.parse(file_parser.FILE_VMSTAT, os.path.join(stats_root, 'stats_{}/vmstat'.format(f)))})
-        tmp.update({'test': f})
-        res.append(tmp)
+        try:
+            # Currently we support only FIO output and vmstat output
+            tmp.update({'fio_out': parser.parse(file_parser.FILE_FIO_OUT, os.path.join(stats_root, f))})
+            tmp.update(
+                {'vms_out': parser.parse(file_parser.FILE_VMSTAT, os.path.join(stats_root, 'stats_{}/vmstat'.format(f)))})
+            tmp.update({'test': f})
+            res.append(tmp)
+        except Exception as ex:
+            print('Parse monitor file failed on file = {} cause:'.format(f))
+            print('Most likely File f: {}  is damaged or in incorrect format, please revisit it manually!'.format(f))
+            print(ex)
+            print(ex.with_traceback())
+            exit(1)
 
     print(res)
     return res
@@ -239,17 +246,26 @@ def save_to_file(csv, tag, fs):
 
 def get_tag(stats_root, config):
     files = [f for f in os.listdir(stats_root) if os.path.isfile(os.path.join(stats_root, f))]
-    workload = config.get('test', 'workload').split(',').sort(key=len, reverse=True)
+    workloads = config.get('test', 'workload').split(',')
+    if len(workloads) > 1:
+        workloads.sort(key=len, reverse=True)
     res = []
     if len(files) < 1:
         return 'ERROR'
 
     for f in files:
+        w = None
+        for wi in workloads:
+            if wi in f:
+                w = wi
+                break
+        if w is None:
+            print('ERROR: Workloads from config {} doesnt exist in file tag: {}!'.format(workloads, f))
         # Skip swaps just in case :)
         if '.swp' in f:
             continue
         os.path.join(stats_root, f)
-        res.append((lambda x: '_'.join(x[:x.index(workload)]))(f.split('_')))
+        res.append((lambda x: '_'.join(x[:x.index(w)]))(f.split('_')))
     # Get middle element right now
     return res[int(len(res)/2)]
 
