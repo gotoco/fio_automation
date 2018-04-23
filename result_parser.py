@@ -105,7 +105,7 @@ def parse_field(field, intel=0):
 def parse_monitor_files(stats_root, cfg):
     # Get all perf files from the stats_root
     files = [f for f in os.listdir(stats_root) if os.path.isfile(os.path.join(stats_root, f))]
-    parser = file_parser()
+    parser = file_parser(cfg)
     res = []
     for f in files:
         tmp = {}

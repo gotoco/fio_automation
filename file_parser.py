@@ -1,3 +1,6 @@
+import configparser
+import functools
+
 
 def is_number(s):
     try:
@@ -16,15 +19,33 @@ def is_number(s):
     return False
 
 
-class file_parser(object):
-
+class file_parser:
     FILE_VMSTAT = "FILE_VMSTAT"
     FILE_FIO_OUT = "FILE_FIO_OUT"
+    CONFIG_NAME = "test_config.ini"
+    config = None
+
+    p_prefix = lambda s : s[s.find('(')+1:s.find(')')]
+    p_sufix = lambda s : s[s.find(')')+1:]
+    p_index = lambda s : file_parser.p_prefix(s).split('_')[0]
+    p_name = lambda s: file_parser.p_prefix(s)[file_parser.p_prefix(s).find('_')+1:]
+    p_filed_spec = lambda y : [y[:y.find(':')], y[y.find(':')+1:]]
+    p_filed = lambda s : file_parser.p_filed_spec(file_parser.p_sufix(s))
+
+    def __init__(self, config=None):
+        if config is not None:
+            self.config = config
 
     """ Simple class to parse files, currently support two types of files:
         - FILE_VMSTAT: output of vmstat
         - FILE_FIO_OUT: output of FIO
     """
+    @staticmethod
+    def my_compare(s1, s2):
+        first = file_parser.p_index(s1)
+        second = file_parser.p_index(s2)
+        return int(first) - int(second)
+
     def parse(self, file_type: object, file: object) -> object:
         f = open(file, 'r', errors='replace')
 
@@ -41,6 +62,7 @@ class file_parser(object):
         If there is any non numeric data in the row, it will be skipped
         Return as a result dictionary of row_name:row_vaules
     """
+
     def parse_file_array(self, lines):
         res = {}
         title = lines[0].split()
@@ -61,6 +83,7 @@ class file_parser(object):
     """ Find sections inside structural file (fio output)
         Return dictionary {section_name -> section_rows}
     """
+
     @staticmethod
     def find_sections(rows, section):
         sec = []
@@ -79,7 +102,7 @@ class file_parser(object):
     def get_value(string):
         # if string inside brackets extract them
         # if '=' get only value
-        return (lambda x: x[x.find('=')+1:])(string.strip('()').strip(','))
+        return (lambda x: x[x.find('=') + 1:])(string.strip('()').strip(','))
 
     """ Get value from section: value position is described by pair[row, col (, args)]
         - row : can be string or number 
@@ -89,6 +112,7 @@ class file_parser(object):
         - args... : if args specified, field will be additionally split
                 across arg[0], and arg[1] position will be returned
     """
+
     @staticmethod
     def get_field_from_section(section_rows, field):
         global result
@@ -129,30 +153,33 @@ class file_parser(object):
         # Not done yet:
             - stats per process
     """
+
     def parse_file_sections(self, file):
         rows = file.readlines()
         values = {}
 
-        # TODO: move this stuff as a method parameter (configuration object)
-        # TODO: Item list should be embeddable inside config file
+        if self.config is None:
+            self.config = configparser.ConfigParser()
+            self.config.read(self.CONFIG_NAME )
+
+        fio_output = self.config.get('csv_output', 'fio_output')
+        fio_fields = fio_output.split(';')
+        sorted(fio_fields, key=functools.cmp_to_key(self.my_compare))
+
+        # TODO: Move this to the config file
         disk_stats_tag = 'Disk stats (read/write):'
-        ios_r = 'ios_r'
-        ios_w = 'ios_w'
         status_group_tag = 'Run status group'
+        item_list1 = []
+
         # Field is described as a pair: row
-        read_bw = ['READ', 'bw']
-        write_bw = ['WRITE', 'bw']
-
-#        description = [[read_bw, write_bw],  [[1, 'ios', '/', 0], [1, 'ios', '/', 1]]]
-#        title = {status_group_tag: [read_bw[0], write_bw[0]], disk_stats_tag: [ios_r, ios_w]}
+        #        description = [[read_bw, write_bw],  [[1, 'ios', '/', 0], [1, 'ios', '/', 1]]]
+        #        title = {status_group_tag: [read_bw[0], write_bw[0]], disk_stats_tag: [ios_r, ios_w]}
         # List of all items that need to be extracted from the file
-        item_list = [{'section': status_group_tag, 'title': read_bw[0], 'description': read_bw},
-                     {'section': status_group_tag, 'title': write_bw[0], 'description': write_bw},
-                     {'section': status_group_tag, 'title': ios_r, 'description': ['READ', 'io']},
-                     {'section': status_group_tag, 'title': ios_w, 'description': ['WRITE', 'io']},
-                     ]
+        for it in fio_fields:
+            ent = {'section': status_group_tag, 'title': file_parser.p_name(it), 'description': file_parser.p_filed(it)}
+            item_list1.append(ent)
 
-        for i in item_list:
+        for i in item_list1:
             # Find sections
             selected_section = file_parser.find_sections(rows, i['section'])
 
@@ -180,7 +207,7 @@ class file_parser(object):
                 else:
                     counters.append(s)
         if len(counters) > 0:
-            del(counters[0])
+            del (counters[0])
             perf_cnt = {}
             for idx, v in enumerate(counters):
                 val = int(v.split()[0].replace(",", ""))
@@ -193,7 +220,6 @@ class file_parser(object):
 
 
 if __name__ == "__main__":
-
     print("TEST FIO output!")
     parser = file_parser()
     res = parser.parse(file_parser.FILE_FIO_OUT, "./examples/fio_reference_output.log")
